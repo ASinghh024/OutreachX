@@ -1,0 +1,28 @@
+Sample Contact Information for Testing
+
+Company: Tech Solutions Inc
+HR Manager: Sarah Johnson
+Email: sarah.johnson@techsolutions.com
+Phone: (555) 123-4567
+
+Company: Digital Marketing Corp
+HR Director: Michael Chen
+Email: michael.chen@digitalmarketing.com
+Phone: (555) 234-5678
+
+Company: Innovation Labs LLC
+Recruiter: Emily Davis
+Email: emily.davis@innovationlabs.com
+Phone: (555) 345-6789
+
+Company: Global Enterprises Ltd
+Talent Acquisition: Robert Wilson
+Email: robert.wilson@globalenterprises.com
+Phone: (555) 456-7890
+
+Company: StartupHub Inc
+HR Specialist: Lisa Anderson
+Email: lisa.anderson@startuphub.com
+Phone: (555) 567-8901
+
+Note: This is a sample text file for testing. In a real scenario, you would upload a PDF file containing contact information that the application will parse and extract email addresses, company names, and HR contact names automatically.

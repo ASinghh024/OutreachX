@@ -1,0 +1,17 @@
+{
+  "name": "gmail-bulk-sender",
+  "version": "1.0.0",
+  "description": "Gmail Bulk Email Sender with OAuth 2.0 and PDF extraction",
+  "main": "index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "cd server && npm run dev",
+    "client": "cd client && npm run dev",
+    "install-all": "npm install && cd server && npm install && cd ../client && npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^7.6.0"
+  },
+  "author": "",
+  "license": "MIT"
+}

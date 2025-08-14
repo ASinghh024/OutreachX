@@ -19,6 +19,21 @@ A web application for sending bulk emails through Gmail with OAuth 2.0 integrati
 - **Authentication**: Google OAuth 2.0
 - **File Processing**: PDF parsing with email extraction
 
+## 🔒 Security Notes
+
+**IMPORTANT**: This repository includes a `.gitignore` file that protects sensitive information:
+
+- `credentials.json` - Contains Google OAuth client secrets
+- `server/.env` - Contains environment variables and API keys
+- `server/emails.db` - Contains email tracking data
+- Sample contact files with real data
+
+**Before pushing to GitHub**:
+1. Ensure `.gitignore` is in place
+2. Use template files (`*.template`) for setup instructions
+3. Never commit real credentials or personal data
+4. Review all files before committing
+
 ## Setup Instructions
 
 ### 1. Google Cloud Console Setup
@@ -37,19 +52,38 @@ A web application for sending bulk emails through Gmail with OAuth 2.0 integrati
 
 ### 2. Environment Configuration
 
-1. Navigate to the server directory:
+⚠️ **SECURITY WARNING**: Never commit sensitive credentials to version control!
+
+1. Copy the template files and add your credentials:
    ```bash
-   cd server
+   # Copy credentials template
+   cp credentials.json.template credentials.json
+   
+   # Copy environment template
+   cp server/.env.template server/.env
    ```
 
-2. Update the `.env` file with your Google OAuth credentials:
+2. Update `credentials.json` with your Google OAuth credentials from step 1:
+   ```json
+   {
+     "web": {
+       "client_id": "your_actual_google_client_id",
+       "client_secret": "your_actual_google_client_secret",
+       "project_id": "your_project_id",
+       "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+       "token_uri": "https://oauth2.googleapis.com/token",
+       "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+       "redirect_uris": ["http://localhost:3000/auth/google/callback"]
+     }
+   }
+   ```
+
+3. Update `server/.env` with your configuration:
    ```env
    GOOGLE_CLIENT_ID=your_actual_google_client_id
    GOOGLE_CLIENT_SECRET=your_actual_google_client_secret
    PORT=3000
    NODE_ENV=development
-   # For email tracking to work with external email clients, change this to your public URL
-   # Example: BASE_URL=https://your-domain.com or use ngrok for testing
    BASE_URL=http://localhost:3000
    ```
 

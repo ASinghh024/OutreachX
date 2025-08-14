@@ -192,9 +192,9 @@ function App() {
         if (!hrName) {
           const companyName = contact.companyName && contact.companyName.trim() && contact.companyName !== 'n/a' ? contact.companyName.trim() : '';
           if (companyName) {
-            greeting = `${companyName} Recruitment Team,`;
+            greeting = `${companyName} Recruitment Team`;
           } else {
-            greeting = ' Recruitment Team,';
+            greeting = 'Recruitment Team';
           }
         } else {
           greeting = hrName;
@@ -203,10 +203,14 @@ function App() {
         const personalizedMessage = emailMessage
           .replace(/\{companyName\}/g, contact.companyName || 'your company')
           .replace(/\{hrName\}/g, greeting);
+        
+        const personalizedSubject = emailSubject
+          .replace(/\{companyName\}/g, contact.companyName || 'your company')
+          .replace(/\{hrName\}/g, greeting);
 
         await axios.post(`${API_BASE}/send-email`, {
           to: contact.email,
-          subject: emailSubject,
+          subject: personalizedSubject,
           message: personalizedMessage,
           companyName: contact.companyName,
           hrName: contact.hrName

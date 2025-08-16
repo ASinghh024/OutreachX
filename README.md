@@ -1,4 +1,4 @@
-# Gmail Bulk Email Sender
+# OutreachX
 
 A web application for sending bulk emails through Gmail with OAuth 2.0 integration and PDF-based recipient extraction.
 
@@ -208,7 +208,7 @@ Response:
 
 ### Project Structure
 ```
-email-tracker/
+OutreachX/
 ├── server/
 │   ├── index.js          # Main server file
 │   ├── package.json      # Server dependencies

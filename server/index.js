@@ -8,7 +8,7 @@ const Papa = require('papaparse');
 const { google } = require('googleapis');
 const fs = require('fs');
 const path = require('path');
-const { insertSentEmail, getAllSentEmails, insertFailedEmail, getAllFailedEmails, getEmailSummary } = require('./db');
+const { insertSentEmail, getAllSentEmails, insertFailedEmail, getAllFailedEmails, getEmailSummary, deleteSentEmail, deleteAllSentEmails } = require('./db');
 const { generateTrackingId, convertToHtmlWithTracking, handleTrackingPixelRequest } = require('./tracking');
 require('dotenv').config();
 
@@ -42,8 +42,26 @@ const oauth2Client = new google.auth.OAuth2(
   'http://localhost:3000/auth/google/callback'
 );
 
-// In-memory storage for tokens (in production, use a proper database)
+// In-memory storage for tokens and user info (in production, use a proper database)
 let storedTokens = null;
+let userInfo = null;
+
+// Function to get user profile information
+async function getUserProfile() {
+  if (!storedTokens) {
+    throw new Error('No stored tokens available');
+  }
+  
+  try {
+    oauth2Client.setCredentials(storedTokens);
+    const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
+    const response = await oauth2.userinfo.get();
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching user profile:', error);
+    throw error;
+  }
+}
 
 // Routes
 
@@ -51,7 +69,8 @@ let storedTokens = null;
 app.get('/connect-gmail', (req, res) => {
   const scopes = [
     'https://www.googleapis.com/auth/gmail.send',
-    'https://www.googleapis.com/auth/userinfo.email'
+    'https://www.googleapis.com/auth/userinfo.email',
+    'https://www.googleapis.com/auth/userinfo.profile'
   ];
 
   const authUrl = oauth2Client.generateAuthUrl({
@@ -71,6 +90,15 @@ app.get('/auth/google/callback', async (req, res) => {
     const { tokens } = await oauth2Client.getToken(code);
     oauth2Client.setCredentials(tokens);
     storedTokens = tokens;
+    
+    // Fetch and store user profile information
+    try {
+      userInfo = await getUserProfile();
+      console.log('User profile fetched:', userInfo.name, userInfo.email);
+    } catch (profileError) {
+      console.error('Failed to fetch user profile:', profileError);
+      // Continue without profile info
+    }
     
     // Store tokens in session
     req.session.tokens = tokens;
@@ -107,8 +135,9 @@ function categorizeEmailError(error) {
 }
 
 // POST /send-email - Send email using Gmail API
-app.post('/send-email', async (req, res) => {
+app.post('/send-email', upload.single('cvFile'), async (req, res) => {
   const { to, subject, message, companyName, hrName } = req.body;
+  const cvFile = req.file; // Multer adds the uploaded file here
 
   if (!storedTokens) {
     return res.status(401).json({ error: 'Not authenticated with Gmail' });
@@ -130,15 +159,51 @@ app.post('/send-email', async (req, res) => {
     // Convert message to HTML with tracking pixel
     const htmlMessage = convertToHtmlWithTracking(message, trackingId);
 
-    // Create email with HTML content
-    const emailContent = [
-      `To: ${to}`,
-      `Subject: ${subject}`,
-      'MIME-Version: 1.0',
-      'Content-Type: text/html; charset=utf-8',
-      '',
-      htmlMessage
-    ].join('\n');
+    // Create email with HTML content and proper From header
+    const fromHeader = userInfo && userInfo.name 
+      ? `${userInfo.name} <${userInfo.email}>`
+      : userInfo?.email || 'me';
+    
+    let emailContent;
+    
+    if (cvFile) {
+      // Create multipart email with attachment
+      const boundary = `boundary_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      emailContent = [
+        `To: ${to}`,
+        `From: ${fromHeader}`,
+        `Subject: ${subject}`,
+        'MIME-Version: 1.0',
+        `Content-Type: multipart/mixed; boundary="${boundary}"`,
+        '',
+        `--${boundary}`,
+        'Content-Type: text/html; charset=utf-8',
+        'Content-Transfer-Encoding: 7bit',
+        '',
+        htmlMessage,
+        '',
+        `--${boundary}`,
+        `Content-Type: ${cvFile.mimetype}; name="${cvFile.originalname}"`,
+        'Content-Transfer-Encoding: base64',
+        `Content-Disposition: attachment; filename="${cvFile.originalname}"`,
+        '',
+        cvFile.buffer.toString('base64'),
+        '',
+        `--${boundary}--`
+      ].join('\n');
+    } else {
+      // Create simple HTML email without attachment
+      emailContent = [
+        `To: ${to}`,
+        `From: ${fromHeader}`,
+        `Subject: ${subject}`,
+        'MIME-Version: 1.0',
+        'Content-Type: text/html; charset=utf-8',
+        '',
+        htmlMessage
+      ].join('\n');
+    }
 
     const encodedMessage = Buffer.from(emailContent)
       .toString('base64')
@@ -163,8 +228,8 @@ app.post('/send-email', async (req, res) => {
       trackingId
     });
 
-    console.log(`Email sent successfully to ${to}`);
-    res.json({ success: true, messageId: result.data.id, trackingId });
+    console.log(`Email sent successfully to ${to}${cvFile ? ' with CV attachment' : ''}`);
+    res.json({ success: true, messageId: result.data.id, trackingId, hasAttachment: !!cvFile });
   } catch (error) {
     console.error('Error sending email to', to, ':', error.message);
     
@@ -337,52 +402,112 @@ function extractFromExcel(buffer) {
 function extractFromCSV(csvText) {
   const contacts = [];
   
-  // Parse CSV with Papa Parse
-  let parsed = Papa.parse(csvText, {
-    header: false,
-    skipEmptyLines: true,
-    delimiter: ','
-  });
-  
-  // If comma parsing results in single column, try tab delimiter
-  if (parsed.data.length > 0 && parsed.data[0].length === 1) {
-    parsed = Papa.parse(csvText, {
-      header: false,
-      skipEmptyLines: true,
-      delimiter: '\t'
-    });
-  }
-  
-  if (parsed.data.length < 2) return contacts; // Need at least header and one data row
-  
-  // Get headers from first row and trim spaces
-  const headers = parsed.data[0].map(header => String(header || '').trim());
-  
-  // Find column indexes for our target fields (ignore serial number columns)
-  const emailIndex = headers.findIndex(h => h.toLowerCase() === 'email');
-  const companyIndex = headers.findIndex(h => h.toLowerCase().includes('company'));
-  const nameIndex = headers.findIndex(h => h.toLowerCase().includes('contact person') || h.toLowerCase().includes('contact'));
-  
-  // Process data rows (skip header row)
-  for (let i = 1; i < parsed.data.length; i++) {
-    const row = parsed.data[i];
+  try {
+    // Split CSV into lines and handle different line endings
+    const lines = csvText.split(/\r?\n/);
     
-    // Skip empty rows
-    if (!row || row.every(cell => !cell || String(cell).trim() === '')) {
-      continue;
+    if (lines.length < 2) return contacts; // Need at least header and one data row
+    
+    // Get headers from first row, split by comma and trim spaces
+    const headerLine = lines[0].trim();
+    const headers = headerLine.split(',').map(header => header.trim().replace(/^"|"$/g, ''));
+    
+    console.log('CSV Headers found:', headers);
+    
+    // Process all data rows (skip header row)
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      
+      // Skip empty lines
+      if (!line) continue;
+      
+      // Split by comma and handle trailing commas
+      let fields = line.split(',').map(field => field.trim().replace(/^"|"$/g, ''));
+      
+      // Remove empty trailing fields caused by trailing commas
+      while (fields.length > 0 && fields[fields.length - 1] === '') {
+        fields.pop();
+      }
+      
+      // Skip if no meaningful data
+      if (fields.length === 0 || fields.every(field => !field)) {
+        continue;
+      }
+      
+      // Create object with header keys
+      const rowData = {};
+      headers.forEach((header, index) => {
+        rowData[header] = fields[index] || '';
+      });
+      
+      console.log(`Row ${i} data:`, rowData);
+      
+      // For OutreachX compatibility, map to expected format
+      const email = rowData['Email'] || rowData['email'] || '';
+      const companyName = rowData['Company'] || rowData['company'] || rowData['Company Name'] || '';
+      const hrName = rowData['Contact Person'] || rowData['contact person'] || rowData['HR Name'] || rowData['Name'] || rowData['name'] || '';
+      
+      // Only add if we have an email
+      if (email && email.includes('@')) {
+        contacts.push({
+          email: email,
+          companyName: companyName || 'n/a',
+          hrName: hrName || 'n/a',
+          // Also include the raw data for debugging
+          rawData: rowData
+        });
+      }
     }
     
-    const email = emailIndex >= 0 ? String(row[emailIndex] || '').trim() : '';
-    const companyName = companyIndex >= 0 ? String(row[companyIndex] || '').trim() : '';
-    const hrName = nameIndex >= 0 ? String(row[nameIndex] || '').trim() : '';
+    console.log(`CSV parsing completed. Extracted ${contacts.length} contacts from ${lines.length - 1} data rows.`);
     
-    // Only add if we have an email
-    if (email && email.includes('@')) {
-      contacts.push({
-        email: email,
-        companyName: companyName || 'n/a',
-        hrName: hrName || 'n/a'
+  } catch (error) {
+    console.error('Error parsing CSV:', error);
+    
+    // Fallback to Papa Parse if manual parsing fails
+    console.log('Falling back to Papa Parse...');
+    
+    let parsed = Papa.parse(csvText, {
+      header: false,
+      skipEmptyLines: true,
+      delimiter: ','
+    });
+    
+    // If comma parsing results in single column, try tab delimiter
+    if (parsed.data.length > 0 && parsed.data[0].length === 1) {
+      parsed = Papa.parse(csvText, {
+        header: false,
+        skipEmptyLines: true,
+        delimiter: '\t'
       });
+    }
+    
+    if (parsed.data.length < 2) return contacts;
+    
+    const headers = parsed.data[0].map(header => String(header || '').trim());
+    
+    for (let i = 1; i < parsed.data.length; i++) {
+      const row = parsed.data[i];
+      
+      if (!row || row.every(cell => !cell || String(cell).trim() === '')) {
+        continue;
+      }
+      
+      const emailIndex = headers.findIndex(h => h.toLowerCase() === 'email');
+      const companyIndex = headers.findIndex(h => h.toLowerCase().includes('company'));
+      const nameIndex = headers.findIndex(h => h.toLowerCase().includes('contact person') || h.toLowerCase().includes('contact'));
+      
+      const email = emailIndex >= 0 ? String(row[emailIndex] || '').trim() : '';
+      const companyName = companyIndex >= 0 ? String(row[companyIndex] || '').trim() : '';
+      const hrName = nameIndex >= 0 ? String(row[nameIndex] || '').trim() : '';
+      
+      if (email && email.includes('@')) {
+        contacts.push({
+          email: email,
+          companyName: companyName || 'n/a',
+          hrName: hrName || 'n/a'
+        });
+      }
     }
   }
   
@@ -485,6 +610,54 @@ app.get('/export-failed-emails', async (req, res) => {
      res.status(500).json({ error: 'Failed to export failed emails' });
    }
  });
+
+// DELETE /emails/:id - Delete a specific sent email
+app.delete('/emails/:id', async (req, res) => {
+  try {
+    const emailId = parseInt(req.params.id, 10);
+    console.log('Backend: Received delete request for email ID:', req.params.id, 'parsed as:', emailId);
+    
+    // Validate email ID
+    if (isNaN(emailId) || emailId <= 0) {
+      console.log('Backend: Invalid email ID detected');
+      return res.status(400).json({ error: 'Invalid email ID' });
+    }
+    
+    const result = await deleteSentEmail(emailId);
+    console.log('Backend: Delete operation result:', result);
+    
+    if (result.changes === 0) {
+      console.log('Backend: No rows affected - email not found');
+      return res.status(404).json({ error: 'Email not found' });
+    }
+    
+    console.log('Backend: Email deleted successfully');
+    res.json({ 
+      success: true, 
+      message: 'Email deleted successfully',
+      changes: result.changes 
+    });
+  } catch (error) {
+    console.error('Error deleting sent email:', error);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// DELETE /emails - Delete all sent emails
+app.delete('/emails', async (req, res) => {
+  try {
+    const result = await deleteAllSentEmails();
+    
+    res.json({ 
+      success: true, 
+      message: 'All emails deleted successfully',
+      changes: result.changes 
+    });
+  } catch (error) {
+    console.error('Error deleting all sent emails:', error);
+    res.status(500).json({ error: 'Failed to delete all emails' });
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);

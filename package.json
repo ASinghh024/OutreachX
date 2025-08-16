@@ -1,7 +1,7 @@
 {
   "name": "gmail-bulk-sender",
   "version": "1.0.0",
-  "description": "Gmail Bulk Email Sender with OAuth 2.0 and PDF extraction",
+  "description": "OutreachX - Email outreach platform with OAuth 2.0 and contact extraction",
   "main": "index.js",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",

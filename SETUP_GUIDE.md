@@ -1,8 +1,8 @@
-# Gmail Bulk Email Sender - Complete Setup Guide
+# OutreachX - Complete Setup Guide
 
 ## 🚀 Quick Start
 
-Your Gmail Bulk Email Sender application is now ready! Follow these steps to complete the setup:
+Your OutreachX application is now ready! Follow these steps to complete the setup:
 
 ### 1. Google OAuth 2.0 Setup (REQUIRED)
 
@@ -153,7 +153,7 @@ For production deployment:
 
 ## 🎉 You're All Set!
 
-Your Gmail Bulk Email Sender is now ready to use. Remember to:
+Your OutreachX is now ready to use. Remember to:
 
 1. ✅ Complete Google OAuth setup
 2. ✅ Update `.env` with your credentials

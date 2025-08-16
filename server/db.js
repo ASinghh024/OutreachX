@@ -109,6 +109,7 @@ function getAllSentEmails() {
   return new Promise((resolve, reject) => {
     const query = `
       SELECT 
+        id,
         recipient_email,
         subject,
         company_name,
@@ -220,6 +221,40 @@ function getEmailSummary() {
   });
 }
 
+// Delete a sent email by ID
+function deleteSentEmail(emailId) {
+  return new Promise((resolve, reject) => {
+    const query = 'DELETE FROM sent_emails WHERE id = ?';
+    
+    db.run(query, [emailId], function(err) {
+      if (err) {
+        console.error('Error deleting sent email:', err);
+        reject(err);
+      } else {
+        console.log(`Sent email deleted successfully. Rows affected: ${this.changes}`);
+        resolve({ changes: this.changes });
+      }
+    });
+  });
+}
+
+// Delete all sent emails
+function deleteAllSentEmails() {
+  return new Promise((resolve, reject) => {
+    const query = 'DELETE FROM sent_emails';
+    
+    db.run(query, [], function(err) {
+      if (err) {
+        console.error('Error deleting all sent emails:', err);
+        reject(err);
+      } else {
+        console.log(`All sent emails deleted successfully. Rows affected: ${this.changes}`);
+        resolve({ changes: this.changes });
+      }
+    });
+  });
+}
+
 module.exports = {
   insertSentEmail,
   markEmailAsOpened,
@@ -227,5 +262,7 @@ module.exports = {
   insertFailedEmail,
   getAllFailedEmails,
   getEmailSummary,
+  deleteSentEmail,
+  deleteAllSentEmails,
   closeDatabase
 };

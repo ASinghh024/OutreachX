@@ -19,6 +19,15 @@ function App() {
   const [cvFile, setCvFile] = useState(null);
   const [cvError, setCvError] = useState('');
   
+  // Template states
+  const [templates, setTemplates] = useState([]);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState(null);
+  const [templateForm, setTemplateForm] = useState({ name: '', body: '', tags: '' });
+  const [templateSearch, setTemplateSearch] = useState('');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
+  const [showTemplateDropdown, setShowTemplateDropdown] = useState(false);
+  
   // Placeholder autocomplete state for message
   const [showPlaceholderDropdown, setShowPlaceholderDropdown] = useState(false);
   const [placeholderFilter, setPlaceholderFilter] = useState('');
@@ -44,6 +53,8 @@ function App() {
       fetchFailedEmails();
     } else if (activeTab === 'summary') {
       fetchEmailSummary();
+    } else if (activeTab === 'templates') {
+      fetchTemplates();
     }
   }, [activeTab]);
 
@@ -78,13 +89,17 @@ function App() {
           setSubjectPlaceholderFilter('');
         }
       }
+      // Close template dropdown when clicking outside
+      if (showTemplateDropdown && !event.target.closest('.template-dropdown-container')) {
+        setShowTemplateDropdown(false);
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showPlaceholderDropdown, showSubjectPlaceholderDropdown, textareaRef, subjectInputRef]);
+  }, [showPlaceholderDropdown, showSubjectPlaceholderDropdown, showTemplateDropdown, textareaRef, subjectInputRef]);
 
   const addMessage = (text, type) => {
     const message = { id: Date.now(), text, type };
@@ -645,6 +660,95 @@ function App() {
     };
   };
 
+  // Template functions
+  const fetchTemplates = async () => {
+    try {
+      const response = await axios.get(`${API_BASE}/templates`);
+      if (response.data.success) {
+        setTemplates(response.data.templates);
+      }
+    } catch (error) {
+      console.error('Error fetching templates:', error);
+      addMessage('Failed to fetch templates', 'error');
+    }
+  };
+
+  const saveTemplate = async () => {
+    try {
+      if (!templateForm.name.trim() || !templateForm.body.trim()) {
+        addMessage('Template name and body are required', 'error');
+        return;
+      }
+
+      if (editingTemplate) {
+        await axios.put(`${API_BASE}/templates/${editingTemplate.id}`, templateForm);
+        addMessage('Template updated successfully', 'success');
+      } else {
+        await axios.post(`${API_BASE}/templates`, templateForm);
+        addMessage('Template created successfully', 'success');
+      }
+
+      setShowTemplateModal(false);
+      setEditingTemplate(null);
+      setTemplateForm({ name: '', body: '', tags: '' });
+      fetchTemplates();
+    } catch (error) {
+      console.error('Error saving template:', error);
+      addMessage('Failed to save template', 'error');
+    }
+  };
+
+  const deleteTemplate = async (id) => {
+    try {
+      await axios.delete(`${API_BASE}/templates/${id}`);
+      addMessage('Template deleted successfully', 'success');
+      setShowDeleteConfirm(null);
+      fetchTemplates();
+    } catch (error) {
+      console.error('Error deleting template:', error);
+      addMessage('Failed to delete template', 'error');
+    }
+  };
+
+  const openTemplateModal = (template = null) => {
+    if (template) {
+      setEditingTemplate(template);
+      setTemplateForm({
+        name: template.name,
+        body: template.body,
+        tags: template.tags || ''
+      });
+    } else {
+      setEditingTemplate(null);
+      setTemplateForm({ name: '', body: '', tags: '' });
+    }
+    setShowTemplateModal(true);
+  };
+
+  const insertTemplate = (template) => {
+    setEmailMessage(template.body);
+    addMessage('Template inserted into email', 'success');
+  };
+
+  const getFilteredTemplates = () => {
+    if (!templateSearch.trim()) return templates;
+    const search = templateSearch.toLowerCase();
+    return templates.filter(template => 
+      template.name.toLowerCase().includes(search) ||
+      (template.tags && template.tags.toLowerCase().includes(search))
+    );
+  };
+
+  const formatTags = (tags) => {
+    if (!tags) return [];
+    return tags.split(',').map(tag => tag.trim()).filter(tag => tag);
+  };
+
+  const getPreviewText = (body) => {
+    const lines = body.split('\n').filter(line => line.trim());
+    return lines.slice(0, 2).join(' ').substring(0, 100) + (body.length > 100 ? '...' : '');
+  };
+
   const renderUploadTab = () => (
     <div className="space-y-6">
       <div className="card p-6">
@@ -832,9 +936,92 @@ function App() {
             )}
           </div>
           <div className="relative">
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              Message
-            </label>
+            <div className="flex items-center justify-between mb-3">
+              <label className="block text-sm font-medium text-gray-700">
+                Message
+              </label>
+              <div className="relative template-dropdown-container">
+                 <button
+                   onClick={() => setShowTemplateDropdown(!showTemplateDropdown)}
+                   className="flex items-center gap-2 px-3 py-1.5 text-sm text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors"
+                 >
+                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                   </svg>
+                   Insert Template
+                   <svg className={`w-4 h-4 transition-transform ${showTemplateDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                   </svg>
+                 </button>
+                 
+                 {/* Template Dropdown */}
+                 {showTemplateDropdown && (
+                   <div className="absolute right-0 top-full mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto">
+                    {templates.length === 0 ? (
+                      <div className="p-4 text-center text-gray-500">
+                        <p className="text-sm mb-2">No templates available</p>
+                        <button
+                          onClick={() => {
+                            setShowTemplateDropdown(false);
+                            setActiveTab('templates');
+                          }}
+                          className="text-purple-600 hover:text-purple-700 text-sm font-medium"
+                        >
+                          Create your first template
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="p-2">
+                        <div className="mb-2">
+                          <input
+                            type="text"
+                            placeholder="Search templates..."
+                            value={templateSearch}
+                            onChange={(e) => setTemplateSearch(e.target.value)}
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                          />
+                        </div>
+                        {getFilteredTemplates().map((template) => (
+                          <div
+                            key={template.id}
+                            onClick={() => {
+                              insertTemplate(template);
+                              setShowTemplateDropdown(false);
+                              setTemplateSearch('');
+                            }}
+                            className="p-3 hover:bg-gray-50 rounded-md cursor-pointer border-b border-gray-100 last:border-b-0"
+                          >
+                            <div className="flex items-start justify-between mb-1">
+                              <h4 className="text-sm font-medium text-gray-900 truncate flex-1">{template.name}</h4>
+                            </div>
+                            {template.tags && (
+                              <div className="flex flex-wrap gap-1 mb-2">
+                                {formatTags(template.tags).slice(0, 3).map((tag, index) => (
+                                  <span key={index} className="px-1.5 py-0.5 bg-purple-100 text-purple-700 text-xs rounded">
+                                    {tag}
+                                  </span>
+                                ))}
+                                {formatTags(template.tags).length > 3 && (
+                                  <span className="text-xs text-gray-500">+{formatTags(template.tags).length - 3} more</span>
+                                )}
+                              </div>
+                            )}
+                            <p className="text-xs text-gray-600 line-clamp-2">
+                              {getPreviewText(template.body)}
+                            </p>
+                          </div>
+                        ))}
+                        {getFilteredTemplates().length === 0 && templateSearch && (
+                          <div className="p-3 text-center text-gray-500 text-sm">
+                            No templates match your search
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
             <textarea
               ref={(ref) => setTextareaRef(ref)}
               value={emailMessage}
@@ -984,6 +1171,255 @@ function App() {
       </div>
     </div>
   );
+
+  const renderTemplatesTab = () => {
+    return (
+      <div className="space-y-6">
+        <div className="card p-6">
+          <div className="flex justify-between items-center mb-6">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center">
+                <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+              <h2 className="text-2xl font-medium tracking-tight">Templates ({templates.length})</h2>
+            </div>
+            <button
+              onClick={() => openTemplateModal()}
+              className="btn-primary flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              Create Template
+            </button>
+          </div>
+
+          {/* Search Bar */}
+          <div className="mb-6">
+            <div className="relative">
+              <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search templates by name or tags..."
+                value={templateSearch}
+                onChange={(e) => setTemplateSearch(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              />
+            </div>
+          </div>
+
+          {/* Templates List */}
+          {getFilteredTemplates().length === 0 ? (
+            <div className="text-center py-12">
+              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                {templateSearch ? 'No templates found' : 'No templates yet'}
+              </h3>
+              <p className="text-gray-500 mb-4">
+                {templateSearch ? 'Try adjusting your search terms.' : 'Create your first email template to get started.'}
+              </p>
+              {!templateSearch && (
+                <button
+                  onClick={() => openTemplateModal()}
+                  className="btn-primary"
+                >
+                  Create Your First Template
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {getFilteredTemplates().map((template) => (
+                <div key={template.id} className="bg-gray-50 rounded-xl p-4 hover:bg-gray-100 transition-colors">
+                  <div className="flex items-start justify-between mb-3">
+                    <h3 className="text-sm font-medium text-gray-900 truncate flex-1">{template.name}</h3>
+                    <div className="flex items-center gap-1 ml-2">
+                      <button
+                        onClick={() => openTemplateModal(template)}
+                        className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                        title="Edit Template"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => setShowDeleteConfirm(template.id)}
+                        className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                        title="Delete Template"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                  
+                  {/* Tags */}
+                  {template.tags && (
+                    <div className="flex flex-wrap gap-1 mb-3">
+                      {formatTags(template.tags).map((tag, index) => (
+                        <span key={index} className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded-full">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  
+                  {/* Preview */}
+                  <p className="text-xs text-gray-600 mb-3 line-clamp-2">
+                    {getPreviewText(template.body)}
+                  </p>
+                  
+                  {/* Actions */}
+                  <div className="flex items-center justify-between text-xs text-gray-500">
+                    <span>Updated {new Date(template.updated_at).toLocaleDateString()}</span>
+                    <button
+                      onClick={() => {
+                        setActiveTab('compose');
+                        insertTemplate(template);
+                      }}
+                      className="text-purple-600 hover:text-purple-700 font-medium"
+                    >
+                      Use Template
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Template Modal */}
+        {showTemplateModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-xl font-medium">
+                    {editingTemplate ? 'Edit Template' : 'Create New Template'}
+                  </h3>
+                  <button
+                    onClick={() => {
+                      setShowTemplateModal(false);
+                      setEditingTemplate(null);
+                      setTemplateForm({ name: '', body: '', tags: '' });
+                    }}
+                    className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Template Name *
+                    </label>
+                    <input
+                      type="text"
+                      value={templateForm.name}
+                      onChange={(e) => setTemplateForm({ ...templateForm, name: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      placeholder="Enter template name"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Tags (comma-separated)
+                    </label>
+                    <input
+                      type="text"
+                      value={templateForm.tags}
+                      onChange={(e) => setTemplateForm({ ...templateForm, tags: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      placeholder="e.g. follow-up, introduction, cold-email"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Template Body *
+                    </label>
+                    <textarea
+                      value={templateForm.body}
+                      onChange={(e) => setTemplateForm({ ...templateForm, body: e.target.value })}
+                      rows={12}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
+                      placeholder="Enter your email template content here...\n\nYou can use placeholders like {companyName}, {hrName}, etc."
+                    />
+                  </div>
+                </div>
+                
+                <div className="flex items-center justify-end gap-3 mt-6 pt-6 border-t border-gray-200">
+                  <button
+                    onClick={() => {
+                      setShowTemplateModal(false);
+                      setEditingTemplate(null);
+                      setTemplateForm({ name: '', body: '', tags: '' });
+                    }}
+                    className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={saveTemplate}
+                    className="btn-primary"
+                  >
+                    {editingTemplate ? 'Update Template' : 'Create Template'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete Confirmation Modal */}
+        {showDeleteConfirm && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl max-w-md w-full p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                  <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-medium text-gray-900">Delete Template</h3>
+              </div>
+              <p className="text-gray-600 mb-6">
+                Are you sure you want to delete this template? This action cannot be undone.
+              </p>
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  onClick={() => setShowDeleteConfirm(null)}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => deleteTemplate(showDeleteConfirm)}
+                  className="px-4 py-2 bg-red-600 text-white hover:bg-red-700 rounded-lg transition-colors"
+                >
+                  Delete Template
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const renderSentTab = () => (
     <div className="space-y-6">
@@ -1208,6 +1644,7 @@ function App() {
             {[
               { id: 'upload', label: 'Upload & Extract', icon: 'M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12' },
               { id: 'compose', label: 'Compose & Send', icon: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z' },
+              { id: 'templates', label: 'Templates', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
               { id: 'sent', label: 'Sent Emails', icon: 'M12 19l9 2-9-18-9 18 9-2zm0 0v-8' },
               { id: 'failed', label: 'Failed Emails', icon: 'M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
               { id: 'summary', label: 'Summary', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' }
@@ -1235,6 +1672,7 @@ function App() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'upload' && renderUploadTab()}
         {activeTab === 'compose' && renderComposeTab()}
+        {activeTab === 'templates' && renderTemplatesTab()}
         {activeTab === 'sent' && renderSentTab()}
         {activeTab === 'failed' && renderFailedTab()}
         {activeTab === 'summary' && renderSummaryTab()}

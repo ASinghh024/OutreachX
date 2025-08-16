@@ -60,6 +60,25 @@ function initializeDatabase() {
       console.log('Failed emails table initialized successfully.');
     }
   });
+
+  const createTemplatesTable = `
+    CREATE TABLE IF NOT EXISTS templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      body TEXT NOT NULL,
+      tags TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `;
+
+  db.run(createTemplatesTable, (err) => {
+    if (err) {
+      console.error('Error creating templates table:', err.message);
+    } else {
+      console.log('Templates table initialized successfully.');
+    }
+  });
 }
 
 // Insert a new sent email record
@@ -255,6 +274,88 @@ function deleteAllSentEmails() {
   });
 }
 
+// Template CRUD operations
+function insertTemplate(templateData) {
+  return new Promise((resolve, reject) => {
+    const { name, body, tags } = templateData;
+    
+    const query = `
+      INSERT INTO templates (name, body, tags)
+      VALUES (?, ?, ?)
+    `;
+    
+    db.run(query, [name, body, tags], function(err) {
+      if (err) {
+        reject(err);
+      } else {
+        resolve({ id: this.lastID });
+      }
+    });
+  });
+}
+
+function getAllTemplates() {
+  return new Promise((resolve, reject) => {
+    const query = 'SELECT * FROM templates ORDER BY updated_at DESC';
+    
+    db.all(query, [], (err, rows) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(rows);
+      }
+    });
+  });
+}
+
+function updateTemplate(id, templateData) {
+  return new Promise((resolve, reject) => {
+    const { name, body, tags } = templateData;
+    
+    const query = `
+      UPDATE templates 
+      SET name = ?, body = ?, tags = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `;
+    
+    db.run(query, [name, body, tags, id], function(err) {
+      if (err) {
+        reject(err);
+      } else {
+        resolve({ changes: this.changes });
+      }
+    });
+  });
+}
+
+function deleteTemplate(id) {
+  return new Promise((resolve, reject) => {
+    const query = 'DELETE FROM templates WHERE id = ?';
+    
+    db.run(query, [id], function(err) {
+      if (err) {
+        reject(err);
+      } else {
+        resolve({ changes: this.changes });
+      }
+    });
+  });
+}
+
+function getTemplateById(id) {
+  return new Promise((resolve, reject) => {
+    const query = 'SELECT * FROM templates WHERE id = ?';
+    
+    db.get(query, [id], (err, row) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(row);
+      }
+    });
+  });
+}
+
 module.exports = {
   insertSentEmail,
   markEmailAsOpened,
@@ -264,5 +365,10 @@ module.exports = {
   getEmailSummary,
   deleteSentEmail,
   deleteAllSentEmails,
+  insertTemplate,
+  getAllTemplates,
+  updateTemplate,
+  deleteTemplate,
+  getTemplateById,
   closeDatabase
 };

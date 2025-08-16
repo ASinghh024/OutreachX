@@ -8,7 +8,7 @@ const Papa = require('papaparse');
 const { google } = require('googleapis');
 const fs = require('fs');
 const path = require('path');
-const { insertSentEmail, getAllSentEmails, insertFailedEmail, getAllFailedEmails, getEmailSummary, deleteSentEmail, deleteAllSentEmails } = require('./db');
+const { insertSentEmail, getAllSentEmails, insertFailedEmail, getAllFailedEmails, getEmailSummary, deleteSentEmail, deleteAllSentEmails, insertTemplate, getAllTemplates, updateTemplate, deleteTemplate, getTemplateById } = require('./db');
 const { generateTrackingId, convertToHtmlWithTracking, handleTrackingPixelRequest } = require('./tracking');
 require('dotenv').config();
 
@@ -656,6 +656,138 @@ app.delete('/emails', async (req, res) => {
   } catch (error) {
     console.error('Error deleting all sent emails:', error);
     res.status(500).json({ error: 'Failed to delete all emails' });
+  }
+});
+
+// Template API endpoints
+
+// GET /templates - Get all templates
+app.get('/templates', async (req, res) => {
+  try {
+    const templates = await getAllTemplates();
+    res.json({ success: true, templates });
+  } catch (error) {
+    console.error('Error fetching templates:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to fetch templates',
+      details: error.message 
+    });
+  }
+});
+
+// GET /templates/:id - Get template by ID
+app.get('/templates/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const template = await getTemplateById(id);
+    
+    if (!template) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Template not found' 
+      });
+    }
+    
+    res.json({ success: true, template });
+  } catch (error) {
+    console.error('Error fetching template:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to fetch template',
+      details: error.message 
+    });
+  }
+});
+
+// POST /templates - Create new template
+app.post('/templates', async (req, res) => {
+  try {
+    const { name, body, tags } = req.body;
+    
+    if (!name || !body) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Template name and body are required' 
+      });
+    }
+    
+    const result = await insertTemplate({ name, body, tags: tags || '' });
+    res.json({ 
+      success: true, 
+      message: 'Template created successfully',
+      templateId: result.id 
+    });
+  } catch (error) {
+    console.error('Error creating template:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to create template',
+      details: error.message 
+    });
+  }
+});
+
+// PUT /templates/:id - Update template
+app.put('/templates/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, body, tags } = req.body;
+    
+    if (!name || !body) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Template name and body are required' 
+      });
+    }
+    
+    const result = await updateTemplate(id, { name, body, tags: tags || '' });
+    
+    if (result.changes === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Template not found' 
+      });
+    }
+    
+    res.json({ 
+      success: true, 
+      message: 'Template updated successfully' 
+    });
+  } catch (error) {
+    console.error('Error updating template:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to update template',
+      details: error.message 
+    });
+  }
+});
+
+// DELETE /templates/:id - Delete template
+app.delete('/templates/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await deleteTemplate(id);
+    
+    if (result.changes === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Template not found' 
+      });
+    }
+    
+    res.json({ 
+      success: true, 
+      message: 'Template deleted successfully' 
+    });
+  } catch (error) {
+    console.error('Error deleting template:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to delete template',
+      details: error.message 
+    });
   }
 });
 
